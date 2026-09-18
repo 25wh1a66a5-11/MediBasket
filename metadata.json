@@ -1,0 +1,6 @@
+{
+  "name": "MediBasket",
+  "description": "Be Ready. Stay Safe. Smart healthcare and emergency preparedness essentials platform with situation-based pre-built kits and custom kit builder.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
