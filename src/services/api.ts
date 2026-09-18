@@ -9,6 +9,7 @@ import {
   Review,
   Category,
   AdminAnalytics,
+  Prescription,
 } from '../types.js';
 
 const BASE_URL = '/api';
@@ -156,7 +157,7 @@ export const api = {
 
   // Orders
   orders: {
-    create: (payload: { address: any; paymentMethod: string; directItem?: any }) =>
+    create: (payload: { address: any; paymentMethod: string; directItem?: any; prescriptionId?: string }) =>
       fetchJson<{ message: string; order: Order }>('/orders', {
         method: 'POST',
         body: JSON.stringify(payload),
@@ -232,6 +233,37 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(data),
       }),
+  },
+
+  // Prescriptions
+  prescriptions: {
+    getAll: (params?: { all?: boolean; status?: string }) => {
+      const q = new URLSearchParams();
+      if (params?.all) q.append('all', 'true');
+      if (params?.status) q.append('status', params.status);
+      return fetchJson<{ prescriptions: Prescription[] }>(`/prescriptions?${q.toString()}`);
+    },
+    getById: (id: string) => fetchJson<{ prescription: Prescription }>(`/prescriptions/${id}`),
+    upload: (data: {
+      patientName: string;
+      doctorName: string;
+      hospitalOrClinic?: string;
+      prescriptionDate: string;
+      fileUrl?: string;
+      fileName?: string;
+      fileSize?: string;
+      notes?: string;
+    }) =>
+      fetchJson<{ message: string; prescription: Prescription }>('/prescriptions/upload', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    verify: (id: string, data: { status: 'approved' | 'rejected' | 'pending'; rejectionReason?: string; verifiedBy?: string }) =>
+      fetchJson<{ message: string; prescription: Prescription }>(`/prescriptions/${id}/verify`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+    delete: (id: string) => fetchJson<{ message: string }>(`/prescriptions/${id}`, { method: 'DELETE' }),
   },
 
   // Admin

@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { mongoDb, Product, Kit, Order, SavedKit, Review } from './db.js';
+import { mongoDb, Product, Kit, Order, SavedKit, Review, Prescription } from './db.js';
 import { initialSeedData } from './seedData.js';
 
 export const apiRouter = Router();
@@ -437,6 +437,15 @@ apiRouter.get('/cart', (req: Request, res: Response) => {
   const deliveryFee = subtotal === 0 || subtotal >= 500 ? 0 : 40;
   const finalTotal = subtotal + deliveryFee;
 
+  const hasPrescriptionItems = cartItems.some(item => {
+    if (item.requiresPrescription) return true;
+    if (item.productId) {
+      const prod = mongoDb.products.findById(item.productId);
+      return Boolean(prod?.requiresPrescription);
+    }
+    return false;
+  });
+
   res.json({
     items: cartItems,
     itemCount: cartItems.reduce((acc, curr) => acc + curr.quantity, 0),
@@ -446,6 +455,7 @@ apiRouter.get('/cart', (req: Request, res: Response) => {
     finalTotal,
     freeDeliveryThreshold: 500,
     amountForFreeDelivery: subtotal < 500 ? 500 - subtotal : 0,
+    hasPrescriptionItems,
   });
 });
 
@@ -474,6 +484,7 @@ apiRouter.post('/cart/add', (req: Request, res: Response) => {
       name: prod.name,
       image: prod.image,
       category: prod.category,
+      requiresPrescription: Boolean(prod.requiresPrescription),
     };
 
     mongoDb.cart.insertOne(newItem);
@@ -560,7 +571,7 @@ apiRouter.delete('/cart/clear', (req: Request, res: Response) => {
 // --- ORDERS & CHECKOUT REST APIs ---
 
 apiRouter.post('/orders', (req: Request, res: Response) => {
-  const { address, paymentMethod, directItem } = req.body;
+  const { address, paymentMethod, directItem, prescriptionId } = req.body;
 
   if (!address || !address.fullName || !address.phone || !address.streetAddress || !address.city || !address.pincode) {
     return res.status(400).json({ error: 'Please provide all required delivery address fields' });
@@ -575,6 +586,51 @@ apiRouter.post('/orders', (req: Request, res: Response) => {
     cartItems = mongoDb.cart.find();
     if (cartItems.length === 0) {
       return res.status(400).json({ error: 'Your cart is empty' });
+    }
+  }
+
+  // --- PRESCRIPTION MEDICINE VERIFICATION CHECK ---
+  // Check if any cart item is a prescription medicine
+  const prescriptionItems = cartItems.filter(item => {
+    if (item.requiresPrescription) return true;
+    if (item.productId) {
+      const prod = mongoDb.products.findById(item.productId);
+      return Boolean(prod?.requiresPrescription);
+    }
+    return false;
+  });
+
+  const hasPrescriptionItems = prescriptionItems.length > 0;
+  let verifiedPrescription: any = null;
+
+  if (hasPrescriptionItems) {
+    if (!prescriptionId) {
+      return res.status(400).json({
+        error: 'A verified prescription is required. Your order includes regulated prescription medicines that cannot be checked out without an approved medical prescription.',
+        code: 'PRESCRIPTION_REQUIRED',
+        rxItems: prescriptionItems.map(i => i.name),
+      });
+    }
+
+    verifiedPrescription = mongoDb.prescriptions.findById(prescriptionId);
+    if (!verifiedPrescription) {
+      return res.status(400).json({
+        error: 'Selected prescription could not be found. Please upload or link a valid medical prescription.',
+        code: 'PRESCRIPTION_INVALID',
+      });
+    }
+
+    if (verifiedPrescription.status !== 'approved') {
+      const statusMessage = verifiedPrescription.status === 'rejected'
+        ? `Your uploaded prescription was rejected (${verifiedPrescription.rejectionReason || 'Pharmacist flagged discrepancy'}). Please upload a corrected valid prescription.`
+        : 'Your prescription is currently pending verification by our certified pharmacist. Prescription medicines can only be checked out once approved.';
+
+      return res.status(400).json({
+        error: statusMessage,
+        code: verifiedPrescription.status === 'rejected' ? 'PRESCRIPTION_REJECTED' : 'PRESCRIPTION_PENDING',
+        status: verifiedPrescription.status,
+        rejectionReason: verifiedPrescription.rejectionReason,
+      });
     }
   }
 
@@ -594,6 +650,8 @@ apiRouter.post('/orders', (req: Request, res: Response) => {
       primaryKitName = item.name;
     }
 
+    const itemIsRx = item.requiresPrescription || (item.productId && Boolean(mongoDb.products.findById(item.productId)?.requiresPrescription));
+
     orderItems.push({
       productId: item.productId,
       kitId: item.kitId,
@@ -603,6 +661,8 @@ apiRouter.post('/orders', (req: Request, res: Response) => {
       image: item.image,
       isKit: Boolean(item.kitId || item.isCustomKit),
       kitItemsSummary: item.customKitItems ? item.customKitItems.map((k: any) => k.name).join(', ') : undefined,
+      requiresPrescription: Boolean(itemIsRx),
+      prescriptionId: itemIsRx && verifiedPrescription ? verifiedPrescription.id : undefined,
     });
 
     // Deduct stock if individual product
@@ -636,6 +696,9 @@ apiRouter.post('/orders', (req: Request, res: Response) => {
     discount,
     deliveryFee,
     totalAmount,
+    hasPrescriptionItems,
+    prescriptionId: verifiedPrescription?.id,
+    prescriptionStatus: hasPrescriptionItems ? 'approved' : 'none',
     address: {
       fullName: address.fullName,
       phone: address.phone,
@@ -650,9 +713,11 @@ apiRouter.post('/orders', (req: Request, res: Response) => {
       {
         status: 'Order Placed',
         timestamp: now,
-        description: paymentMethod === 'online_simulated'
-          ? 'Payment authorized. Order confirmed and sent to automated warehouse.'
-          : 'Cash on Delivery order confirmed. Sterile verification in progress.',
+        description: hasPrescriptionItems
+          ? `Order confirmed with pharmacist-verified Prescription (#${verifiedPrescription.id}). Sent to sterile packaging.`
+          : paymentMethod === 'online_simulated'
+            ? 'Payment authorized. Order confirmed and sent to automated warehouse.'
+            : 'Cash on Delivery order confirmed. Sterile verification in progress.',
         location: 'MediBasket Hub, Dispatch Center',
       },
     ],
@@ -1038,6 +1103,9 @@ apiRouter.get('/admin/analytics', (req: Request, res: Response) => {
   // Recent 6 orders
   const recentOrders = [...orders].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 6);
 
+  const allPrescriptions = mongoDb.prescriptions.find();
+  const pendingPrescriptionsCount = allPrescriptions.filter(p => p.status === 'pending').length;
+
   res.json({
     metrics: {
       totalSales,
@@ -1045,16 +1113,148 @@ apiRouter.get('/admin/analytics', (req: Request, res: Response) => {
       totalCustomers,
       lowStockCount: lowStockProducts.length,
       activeOrdersCount: orders.filter(o => o.status !== 'Delivered').length,
+      pendingPrescriptionsCount,
     },
     lowStockProducts,
     topProducts,
     topKits,
     recentOrders,
+    prescriptions: allPrescriptions,
     categoryCounts: mongoDb.categories.find().map(c => ({
       name: c.name,
       count: products.filter(p => p.category === c.name).length,
     })),
   });
+});
+
+// --- PRESCRIPTION MANAGEMENT REST APIs ---
+
+// Get prescriptions: Admins get all; Users get their own (or all if specified)
+apiRouter.get('/prescriptions', (req: Request, res: Response) => {
+  const { all, status } = req.query;
+  const user = mongoDb.users.findById(activeUserId);
+  const isAdmin = user?.role === 'admin' || all === 'true';
+
+  let list: Prescription[] = [];
+  if (isAdmin) {
+    list = mongoDb.prescriptions.find();
+  } else {
+    list = mongoDb.prescriptions.find(p => p.userId === (activeUserId || 'usr_demo_01'));
+  }
+
+  if (status) {
+    list = list.filter(p => p.status === status);
+  }
+
+  list.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
+  res.json({ prescriptions: list });
+});
+
+apiRouter.get('/prescriptions/:id', (req: Request, res: Response) => {
+  const { id } = req.params;
+  const prescription = mongoDb.prescriptions.findById(id);
+  if (!prescription) {
+    return res.status(404).json({ error: 'Prescription not found' });
+  }
+  res.json({ prescription });
+});
+
+// Upload new prescription
+apiRouter.post('/prescriptions/upload', (req: Request, res: Response) => {
+  const {
+    patientName,
+    doctorName,
+    hospitalOrClinic,
+    prescriptionDate,
+    fileUrl,
+    fileName,
+    fileSize,
+    notes,
+  } = req.body;
+
+  if (!patientName || !doctorName || !prescriptionDate) {
+    return res.status(400).json({ error: 'Patient name, doctor name, and prescription date are required.' });
+  }
+
+  const user = mongoDb.users.findById(activeUserId) || {
+    id: 'usr_demo_01',
+    name: 'Aarav Sharma',
+    email: 'user@medibasket.com',
+    phone: '+91 98765 43210',
+  };
+
+  const rxId = `rx_${Date.now()}`;
+  const now = new Date().toISOString();
+
+  const newPrescription: Prescription = {
+    id: rxId,
+    userId: user.id,
+    userName: user.name,
+    userEmail: user.email,
+    userPhone: user.phone,
+    patientName,
+    doctorName,
+    hospitalOrClinic: hospitalOrClinic || 'Healthcare Clinic / Hospital',
+    prescriptionDate,
+    fileUrl: fileUrl || 'https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?auto=format&fit=crop&w=800&q=80',
+    fileName: fileName || `Prescription_${patientName.replace(/\s+/g, '_')}.pdf`,
+    fileSize: fileSize || '1.1 MB',
+    notes: notes || '',
+    status: 'pending',
+    uploadedAt: now,
+  };
+
+  mongoDb.prescriptions.insertOne(newPrescription);
+
+  res.status(201).json({
+    message: 'Prescription successfully uploaded. A licensed pharmacist will verify it within 15–30 minutes.',
+    prescription: newPrescription,
+  });
+});
+
+// Admin / Pharmacist Verification Endpoint
+apiRouter.put('/prescriptions/:id/verify', (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { status, rejectionReason, verifiedBy } = req.body;
+
+  if (!['approved', 'rejected', 'pending'].includes(status)) {
+    return res.status(400).json({ error: 'Invalid verification status. Must be approved, rejected, or pending.' });
+  }
+
+  if (status === 'rejected' && !rejectionReason) {
+    return res.status(400).json({ error: 'Please provide a rejection reason so the patient can rectify the issue.' });
+  }
+
+  const prescription = mongoDb.prescriptions.findById(id);
+  if (!prescription) {
+    return res.status(404).json({ error: 'Prescription not found.' });
+  }
+
+  const now = new Date().toISOString();
+  const updatePayload: Partial<Prescription> = {
+    status,
+    verifiedBy: status !== 'pending' ? (verifiedBy || 'Chief Pharmacist R. Verma (Reg #PH-99201)') : undefined,
+    verifiedAt: status !== 'pending' ? now : undefined,
+    rejectionReason: status === 'rejected' ? rejectionReason : undefined,
+  };
+
+  mongoDb.prescriptions.updateOne({ id }, updatePayload);
+  const updated = mongoDb.prescriptions.findById(id);
+
+  res.json({
+    message: `Prescription #${id} has been marked as ${status.toUpperCase()}.`,
+    prescription: updated,
+  });
+});
+
+// Delete prescription
+apiRouter.delete('/prescriptions/:id', (req: Request, res: Response) => {
+  const { id } = req.params;
+  const prescription = mongoDb.prescriptions.findById(id);
+  if (!prescription) return res.status(404).json({ error: 'Prescription not found' });
+
+  mongoDb.prescriptions.deleteOne({ id });
+  res.json({ message: 'Prescription deleted successfully' });
 });
 
 // Admin: Restock product

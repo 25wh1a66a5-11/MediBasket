@@ -28,6 +28,9 @@ export interface Product {
   specifications: Record<string, string>;
   usageInfo: string;
   isEssential?: boolean;
+  requiresPrescription?: boolean;
+  dosageForm?: string;
+  scheduleType?: string;
   createdAt: string;
 }
 
@@ -65,6 +68,7 @@ export interface CartItem {
   name: string;
   image: string;
   category?: string;
+  requiresPrescription?: boolean;
 }
 
 export interface OrderItem {
@@ -76,6 +80,29 @@ export interface OrderItem {
   image: string;
   isKit?: boolean;
   kitItemsSummary?: string;
+  requiresPrescription?: boolean;
+  prescriptionId?: string;
+}
+
+export interface Prescription {
+  id: string;
+  userId: string;
+  userName: string;
+  userEmail?: string;
+  userPhone?: string;
+  patientName: string;
+  doctorName: string;
+  hospitalOrClinic?: string;
+  prescriptionDate: string;
+  fileUrl: string;
+  fileName: string;
+  fileSize?: string;
+  notes?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  rejectionReason?: string;
+  verifiedBy?: string;
+  verifiedAt?: string;
+  uploadedAt: string;
 }
 
 export interface Order {
@@ -101,6 +128,9 @@ export interface Order {
   };
   paymentMethod: 'cod' | 'online_simulated';
   status: 'Order Placed' | 'Packed' | 'Shipped' | 'Out for Delivery' | 'Delivered';
+  hasPrescriptionItems?: boolean;
+  prescriptionId?: string;
+  prescriptionStatus?: 'none' | 'pending' | 'approved' | 'rejected';
   trackingHistory: Array<{
     status: 'Order Placed' | 'Packed' | 'Shipped' | 'Out for Delivery' | 'Delivered';
     timestamp: string;
@@ -152,6 +182,7 @@ export interface DatabaseSchema {
   savedKits: SavedKit[];
   wishlist: WishlistItem[];
   reviews: Review[];
+  prescriptions: Prescription[];
 }
 
 // MongoDB Collection emulation class with persistent file storage
@@ -285,6 +316,7 @@ class MediBasketDatabase {
       savedKits: [],
       wishlist: [],
       reviews: [],
+      prescriptions: [],
     };
   }
 
@@ -395,6 +427,16 @@ class MediBasketDatabase {
       () => this.db.reviews,
       items => {
         this.db.reviews = items;
+        this.saveData();
+      }
+    );
+  }
+
+  get prescriptions(): MongoCollection<Prescription> {
+    return new MongoCollection(
+      () => this.db.prescriptions || (this.db.prescriptions = []),
+      items => {
+        this.db.prescriptions = items;
         this.saveData();
       }
     );

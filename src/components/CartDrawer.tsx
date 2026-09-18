@@ -10,6 +10,8 @@ import {
   Sparkles,
   Truck,
   CheckCircle2,
+  FileText,
+  AlertCircle,
 } from 'lucide-react';
 import { useCart } from '../context/CartContext.js';
 
@@ -104,10 +106,15 @@ export function CartDrawer({ onProceedToCheckout, onExploreProducts }: CartDrawe
                     className="w-14 h-14 rounded-xl object-cover border border-slate-100 shrink-0"
                   />
                   <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       {item.isKit && (
                         <span className="text-[9px] bg-teal-100 text-teal-800 font-bold px-1.5 py-0.2 rounded">
                           KIT BUNDLE
+                        </span>
+                      )}
+                      {item.requiresPrescription && (
+                        <span className="text-[9px] bg-amber-100 text-amber-900 border border-amber-300 font-bold px-1.5 py-0.2 rounded flex items-center gap-0.5">
+                          <FileText className="w-2.5 h-2.5 text-amber-700" /> Rx Required
                         </span>
                       )}
                       <h4 className="font-semibold text-xs text-slate-900 truncate max-w-[180px]">
@@ -200,6 +207,13 @@ export function CartDrawer({ onProceedToCheckout, onExploreProducts }: CartDrawe
               </div>
             </div>
 
+            {cart.items.some(i => i.requiresPrescription) && (
+              <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[11px] flex items-center gap-2 font-medium">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>Cart contains prescription items. Doctor's prescription will be verified at checkout.</span>
+              </div>
+            )}
+
             <div className="pt-2">
               <button
                 id="cart-proceed-checkout-btn"
@@ -209,13 +223,13 @@ export function CartDrawer({ onProceedToCheckout, onExploreProducts }: CartDrawe
                 }}
                 className="w-full py-3 bg-teal-600 hover:bg-teal-700 text-white font-bold text-sm rounded-xl flex items-center justify-center gap-2 shadow-md shadow-teal-600/20 active:scale-98 transition-all cursor-pointer"
               >
-                <span>Proceed to Checkout</span>
+                <span>{cart.items.some(i => i.requiresPrescription) ? 'Proceed to Rx Checkout' : 'Proceed to Checkout'}</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
 
               <div className="mt-2 text-center text-[10px] text-slate-500 flex items-center justify-center gap-1">
                 <ShieldCheck className="w-3 h-3 text-teal-600" />
-                <span>Simulated secure checkout • 100% Non-Prescription</span>
+                <span>Certified medical essentials • Direct & verified dispatch</span>
               </div>
             </div>
           </div>

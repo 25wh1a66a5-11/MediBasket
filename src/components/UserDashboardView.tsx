@@ -13,8 +13,12 @@ import {
   CheckCircle2,
   Plus,
   ShoppingBag,
+  FileText,
+  Upload,
+  XCircle,
+  AlertCircle,
 } from 'lucide-react';
-import { Order, CustomKit, Product } from '../types.js';
+import { Order, CustomKit, Product, Prescription } from '../types.js';
 import { api } from '../services/api.js';
 import { useAuth } from '../context/AuthContext.js';
 import { useCart } from '../context/CartContext.js';
@@ -22,7 +26,7 @@ import { useWishlist } from '../context/WishlistContext.js';
 import { useToast } from '../context/ToastContext.js';
 
 interface UserDashboardViewProps {
-  initialTab?: 'overview' | 'orders' | 'kits' | 'wishlist';
+  initialTab?: 'overview' | 'orders' | 'kits' | 'wishlist' | 'prescriptions';
   products: Product[];
   onTrackOrder: (orderId: string) => void;
   onOpenKitBuilder: () => void;
@@ -41,24 +45,56 @@ export function UserDashboardView({
   const { wishlistIds, toggleWishlist } = useWishlist();
   const { showToast } = useToast();
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'kits' | 'wishlist'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'kits' | 'wishlist' | 'prescriptions'>(initialTab);
   const [orders, setOrders] = useState<Order[]>([]);
   const [savedKits, setSavedKits] = useState<CustomKit[]>([]);
+  const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Prescription upload modal state
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadingRx, setUploadingRx] = useState(false);
+  const [uploadForm, setUploadForm] = useState({
+    patientName: user?.name || 'Aarav Sharma',
+    doctorName: 'Dr. Priya Deshmukh, M.D.',
+    hospitalOrClinic: 'Apollo Health Center & Clinic, Indiranagar',
+    prescriptionDate: new Date().toISOString().split('T')[0],
+    notes: 'Prescribed for acute symptom management. Valid for 30 days.',
+    fileName: 'prescription_doc.pdf',
+    fileSize: '1.4 MB',
+    fileUrl: 'https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?auto=format&fit=crop&q=80&w=800',
+  });
 
   const loadData = async () => {
     try {
       setLoading(true);
-      const [ordersRes, kitsRes] = await Promise.all([
+      const [ordersRes, kitsRes, rxRes] = await Promise.all([
         api.orders.getAll(),
         api.myKits.getAll(),
+        api.prescriptions.getAll(),
       ]);
       setOrders(ordersRes.orders);
       setSavedKits(kitsRes.kits || kitsRes.savedKits || []);
+      setPrescriptions(rxRes.prescriptions || []);
     } catch {
       // ignore
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleUploadPrescription = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      setUploadingRx(true);
+      await api.prescriptions.upload(uploadForm);
+      showToast('success', 'Prescription Uploaded', 'Submitted to pharmacist for verification');
+      setShowUploadModal(false);
+      await loadData();
+    } catch (err: any) {
+      showToast('error', 'Upload failed', err.message);
+    } finally {
+      setUploadingRx(false);
     }
   };
 
@@ -166,10 +202,11 @@ export function UserDashboardView({
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-slate-200 mb-6 gap-2">
+      <div className="flex border-b border-slate-200 mb-6 gap-2 overflow-x-auto">
         {[
           { id: 'overview', label: 'Overview', icon: User },
           { id: 'orders', label: `Orders (${orders.length})`, icon: Package },
+          { id: 'prescriptions', label: `My Prescriptions (${prescriptions.length})`, icon: FileText },
           { id: 'kits', label: `My Saved Kits (${savedKits.length})`, icon: Layers },
           { id: 'wishlist', label: `Saved Favorites (${wishlistIds.size})`, icon: Heart },
         ].map(tab => {
@@ -461,6 +498,110 @@ export function UserDashboardView({
         </div>
       )}
 
+      {/* PRESCRIPTIONS TAB */}
+      {activeTab === 'prescriptions' && (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <FileText className="w-5 h-5 text-teal-600" />
+                <span>My Uploaded Doctor's Prescriptions</span>
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Manage your prescriptions and verify status with licensed pharmacists for regulated medication orders.
+              </p>
+            </div>
+
+            <button
+              onClick={() => setShowUploadModal(true)}
+              className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors self-start sm:self-auto"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Upload New Prescription</span>
+            </button>
+          </div>
+
+          {prescriptions.length === 0 ? (
+            <div className="text-center py-12 bg-white rounded-2xl border border-slate-200 p-6">
+              <FileText className="w-12 h-12 text-slate-300 mx-auto mb-2" />
+              <p className="text-sm font-semibold text-slate-700">No Prescriptions Uploaded</p>
+              <p className="text-xs text-slate-500 mt-0.5">Upload doctor prescriptions to seamlessly order regulated medical essentials.</p>
+              <button
+                onClick={() => setShowUploadModal(true)}
+                className="mt-4 px-4 py-2 bg-teal-600 text-white rounded-xl text-xs font-bold hover:bg-teal-700 cursor-pointer"
+              >
+                Upload First Prescription
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {prescriptions.map(p => (
+                <div
+                  key={p.id}
+                  className={`bg-white p-5 rounded-2xl border shadow-xs flex flex-col justify-between ${
+                    p.status === 'approved'
+                      ? 'border-emerald-200'
+                      : p.status === 'pending'
+                      ? 'border-amber-300'
+                      : 'border-rose-200'
+                  }`}
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-sm text-slate-900">{p.doctorName}</span>
+                        </div>
+                        <span className="text-xs text-slate-500">{p.hospitalOrClinic || 'Clinic / Hospital'}</span>
+                      </div>
+
+                      {p.status === 'approved' && (
+                        <span className="bg-emerald-100 text-emerald-800 font-bold text-[10px] px-2.5 py-0.5 rounded-full border border-emerald-300 flex items-center gap-1 shrink-0">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Approved
+                        </span>
+                      )}
+                      {p.status === 'pending' && (
+                        <span className="bg-amber-100 text-amber-900 font-bold text-[10px] px-2.5 py-0.5 rounded-full border border-amber-300 flex items-center gap-1 shrink-0">
+                          <Clock className="w-3 h-3 text-amber-600" /> In Review
+                        </span>
+                      )}
+                      {p.status === 'rejected' && (
+                        <span className="bg-rose-100 text-rose-800 font-bold text-[10px] px-2.5 py-0.5 rounded-full border border-rose-300 flex items-center gap-1 shrink-0">
+                          <XCircle className="w-3 h-3 text-rose-600" /> Rejected
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="text-xs text-slate-600 space-y-1 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                      <div>Patient: <strong>{p.patientName}</strong></div>
+                      <div>Prescription Date: <strong>{p.prescriptionDate}</strong></div>
+                      {p.notes && <div className="italic text-[11px] text-slate-500">"{p.notes}"</div>}
+                    </div>
+
+                    {p.status === 'approved' && p.verifiedBy && (
+                      <div className="text-[11px] text-emerald-800 bg-emerald-50 p-2 rounded-lg border border-emerald-200">
+                        ✓ Verified by {p.verifiedBy}
+                      </div>
+                    )}
+
+                    {p.status === 'rejected' && p.rejectionReason && (
+                      <div className="text-[11px] text-rose-700 bg-rose-50 p-2 rounded-lg border border-rose-200">
+                        ⚠️ Reason: {p.rejectionReason}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
+                    <span>Uploaded: {new Date(p.createdAt || p.uploadedAt).toLocaleDateString()}</span>
+                    <span className="font-semibold text-slate-600">ID #{p.id}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* WISHLIST TAB */}
       {activeTab === 'wishlist' && (
         <div className="space-y-4">
@@ -500,6 +641,108 @@ export function UserDashboardView({
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* UPLOAD PRESCRIPTION MODAL */}
+      {showUploadModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+          <form onSubmit={handleUploadPrescription} className="bg-white rounded-2xl p-6 max-w-md w-full border border-slate-200 shadow-xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+              <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+                <FileText className="w-4 h-4 text-teal-600" />
+                <span>Upload Doctor's Prescription</span>
+              </h3>
+              <button type="button" onClick={() => setShowUploadModal(false)} className="text-slate-400 hover:text-slate-600">
+                <span className="text-xl font-bold leading-none">&times;</span>
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-0.5">Patient Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={uploadForm.patientName}
+                  onChange={e => setUploadForm({ ...uploadForm, patientName: e.target.value })}
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-0.5">Doctor Name & Qualifications *</label>
+                <input
+                  type="text"
+                  required
+                  value={uploadForm.doctorName}
+                  onChange={e => setUploadForm({ ...uploadForm, doctorName: e.target.value })}
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-0.5">Hospital / Clinic *</label>
+                <input
+                  type="text"
+                  required
+                  value={uploadForm.hospitalOrClinic}
+                  onChange={e => setUploadForm({ ...uploadForm, hospitalOrClinic: e.target.value })}
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-0.5">Prescription Date *</label>
+                <input
+                  type="date"
+                  required
+                  value={uploadForm.prescriptionDate}
+                  onChange={e => setUploadForm({ ...uploadForm, prescriptionDate: e.target.value })}
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-0.5">Doctor's Notes</label>
+                <input
+                  type="text"
+                  value={uploadForm.notes}
+                  onChange={e => setUploadForm({ ...uploadForm, notes: e.target.value })}
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg"
+                />
+              </div>
+
+              <div className="p-3 border-2 border-dashed border-teal-300 bg-teal-50/50 rounded-xl flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-teal-600" />
+                  <div>
+                    <span className="font-bold text-slate-800 block text-xs">{uploadForm.fileName}</span>
+                    <span className="text-[10px] text-slate-500">{uploadForm.fileSize} • Valid Rx Document</span>
+                  </div>
+                </div>
+                <span className="text-[10px] font-bold text-teal-700 bg-teal-100 px-2 py-0.5 rounded">Ready</span>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowUploadModal(false)}
+                className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={uploadingRx}
+                className="px-4 py-1.5 bg-teal-600 text-white rounded-lg text-xs font-semibold hover:bg-teal-700 cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>{uploadingRx ? 'Uploading...' : 'Submit Prescription'}</span>
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>

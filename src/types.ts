@@ -32,12 +32,17 @@ export interface Product {
   specifications: Record<string, string>;
   usageInfo: string;
   isEssential?: boolean;
+  requiresPrescription?: boolean;
+  dosageForm?: string;
+  scheduleType?: string;
   createdAt: string;
 }
 
 export interface KitItem {
   productId: string;
   quantity: number;
+  name?: string;
+  price?: number;
 }
 
 export interface KitCalculationItem {
@@ -64,7 +69,9 @@ export interface Kit {
   items: KitItem[];
   normalPrice: number;
   bundlePrice: number;
+  totalPrice?: number;
   savings: number;
+  discountPercentage?: number;
   isPopular?: boolean;
   calculated?: KitCalculation;
   createdAt: string;
@@ -87,6 +94,7 @@ export interface CartItem {
   name: string;
   image: string;
   category?: string;
+  requiresPrescription?: boolean;
 }
 
 export interface CartSummary {
@@ -98,6 +106,7 @@ export interface CartSummary {
   finalTotal: number;
   freeDeliveryThreshold: number;
   amountForFreeDelivery: number;
+  hasPrescriptionItems?: boolean;
 }
 
 export interface OrderItem {
@@ -110,6 +119,8 @@ export interface OrderItem {
   image: string;
   isKit?: boolean;
   kitItemsSummary?: string;
+  requiresPrescription?: boolean;
+  prescriptionId?: string;
 }
 
 export interface TrackingHistoryStep {
@@ -117,6 +128,28 @@ export interface TrackingHistoryStep {
   timestamp: string;
   description: string;
   location: string;
+}
+
+export interface Prescription {
+  id: string;
+  userId: string;
+  userName: string;
+  userEmail?: string;
+  userPhone?: string;
+  patientName: string;
+  doctorName: string;
+  hospitalOrClinic?: string;
+  prescriptionDate: string;
+  fileUrl: string;
+  fileName: string;
+  fileSize?: string;
+  notes?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  rejectionReason?: string;
+  verifiedBy?: string;
+  verifiedAt?: string;
+  uploadedAt: string;
+  createdAt?: string;
 }
 
 export interface Order {
@@ -151,6 +184,11 @@ export interface Order {
   estimatedDelivery?: string;
   paymentMethod: 'cod' | 'online_simulated';
   status: OrderStatus;
+  hasPrescriptionItems?: boolean;
+  requiresPrescription?: boolean;
+  prescriptionRequired?: boolean;
+  prescriptionId?: string;
+  prescriptionStatus?: 'none' | 'pending' | 'approved' | 'rejected';
   trackingHistory: TrackingHistoryStep[];
   createdAt: string;
   deliveredAt?: string;
@@ -190,15 +228,18 @@ export interface AdminAnalytics {
     totalCustomers: number;
     lowStockCount: number;
     activeOrdersCount: number;
+    pendingPrescriptionsCount?: number;
   };
   totalSales?: number;
   totalOrders?: number;
   totalCustomers?: number;
   lowStockCount?: number;
+  pendingPrescriptionsCount?: number;
   popularItems?: Array<{ id: string; name: string; orderCount: number; price: number }>;
   lowStockProducts: Product[];
   topProducts: Array<{ name: string; count: number; revenue: number; image: string }>;
   topKits: Array<{ name: string; count: number; revenue: number }>;
   recentOrders: Order[];
   categoryCounts: Array<{ name: string; count: number }>;
+  prescriptions?: Prescription[];
 }

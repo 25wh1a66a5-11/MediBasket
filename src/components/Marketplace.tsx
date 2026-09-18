@@ -8,6 +8,7 @@ import {
   Star,
   Package,
   RotateCcw,
+  FileText,
 } from 'lucide-react';
 import { Product } from '../types.js';
 import { ProductCard } from './ProductCard.js';
@@ -36,6 +37,7 @@ export function Marketplace({
   const [maxPrice, setMaxPrice] = useState<number>(1000);
   const [minRating, setMinRating] = useState<number>(0);
   const [onlyInStock, setOnlyInStock] = useState<boolean>(false);
+  const [rxFilter, setRxFilter] = useState<'all' | 'otc' | 'rx'>('all');
   const [sortBy, setSortBy] = useState<string>('featured');
   const [showMobileFilters, setShowMobileFilters] = useState<boolean>(false);
 
@@ -55,6 +57,10 @@ export function Marketplace({
         const matchDesc = p.description.toLowerCase().includes(q);
         if (!matchName && !matchCat && !matchBrand && !matchDesc) return false;
       }
+
+      // Rx vs OTC Filter
+      if (rxFilter === 'otc' && p.requiresPrescription) return false;
+      if (rxFilter === 'rx' && !p.requiresPrescription) return false;
 
       // Category
       if (selectedCategory !== 'All' && p.category.toLowerCase() !== selectedCategory.toLowerCase()) {
@@ -96,7 +102,7 @@ export function Marketplace({
     }
 
     return result;
-  }, [products, searchQuery, selectedCategory, selectedBrand, maxPrice, minRating, onlyInStock, sortBy]);
+  }, [products, searchQuery, selectedCategory, selectedBrand, maxPrice, minRating, onlyInStock, rxFilter, sortBy]);
 
   const resetFilters = () => {
     setSearchQuery('');
@@ -105,6 +111,7 @@ export function Marketplace({
     setMaxPrice(1000);
     setMinRating(0);
     setOnlyInStock(false);
+    setRxFilter('all');
     setSortBy('featured');
   };
 
@@ -114,13 +121,13 @@ export function Marketplace({
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-200">
         <div>
           <div className="text-xs font-bold text-teal-700 uppercase tracking-wider mb-1">
-            Certified Non-Prescription Catalog
+            Certified Healthcare & Pharmacy Catalog
           </div>
           <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-            Healthcare & Emergency Essentials
+            Healthcare Essentials & Medicines
           </h2>
           <p className="text-xs text-slate-500 mt-1">
-            Showing {filteredProducts.length} certified medical items • Sterile packaging & fast dispatch
+            Showing {filteredProducts.length} certified items • OTC essentials & verified prescription medicines
           </p>
         </div>
 
@@ -185,8 +192,40 @@ export function Marketplace({
               </button>
             </div>
 
-            {/* Category Filter */}
+            {/* Medicine Classification Filter (OTC vs Rx) */}
             <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2.5">
+                Medicine Type
+              </label>
+              <div className="space-y-1">
+                {[
+                  { id: 'all', label: 'All Essentials & Rx' },
+                  { id: 'otc', label: 'OTC Non-Prescription' },
+                  { id: 'rx', label: 'Prescription Required (Rx)' },
+                ].map(type => (
+                  <button
+                    key={type.id}
+                    onClick={() => setRxFilter(type.id as any)}
+                    className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center justify-between cursor-pointer ${
+                      rxFilter === type.id
+                        ? type.id === 'rx'
+                          ? 'bg-amber-50 text-amber-900 border border-amber-200 font-bold'
+                          : 'bg-teal-50 text-teal-800 font-bold'
+                        : 'text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      {type.id === 'rx' && <FileText className="w-3.5 h-3.5 text-amber-600" />}
+                      <span>{type.label}</span>
+                    </span>
+                    {rxFilter === type.id && <Check className="w-3.5 h-3.5 text-teal-600" />}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Category Filter */}
+            <div className="pt-4 border-t border-slate-100">
               <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2.5">
                 Category
               </label>

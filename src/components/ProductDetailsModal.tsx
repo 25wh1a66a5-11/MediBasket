@@ -11,6 +11,7 @@ import {
   Clock,
   Heart,
   MessageSquare,
+  FileText,
 } from 'lucide-react';
 import { Product, Review } from '../types.js';
 import { api } from '../services/api.js';
@@ -152,15 +153,35 @@ export function ProductDetailsModal({
                 </div>
 
                 {/* Price Display */}
-                <div className="mt-4 flex items-baseline gap-2">
+                <div className="mt-4 flex flex-wrap items-baseline gap-2">
                   <span className="text-3xl font-black text-slate-900">₹{product.price}</span>
                   {product.originalPrice && product.originalPrice > product.price && (
                     <span className="text-sm text-slate-400 line-through">₹{product.originalPrice}</span>
                   )}
-                  <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                    Over-The-Counter Essential
-                  </span>
+                  {product.requiresPrescription ? (
+                    <span className="text-xs font-bold text-amber-800 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-300 flex items-center gap-1">
+                      <FileText className="w-3.5 h-3.5 text-amber-600" />
+                      Prescription Required ({product.scheduleType || 'Rx'})
+                    </span>
+                  ) : (
+                    <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                      Over-The-Counter Essential
+                    </span>
+                  )}
                 </div>
+
+                {/* Prescription Notice if applicable */}
+                {product.requiresPrescription && (
+                  <div className="mt-3 p-3 bg-amber-50/80 border border-amber-200/80 rounded-xl text-xs text-amber-900 flex items-start gap-2.5">
+                    <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold">Doctor's Prescription Mandatory:</span>
+                      <p className="text-[11px] text-amber-800/90 mt-0.5 leading-relaxed">
+                        This is a regulated medicine ({product.scheduleType || 'Schedule H'}). You can add it to your cart, but a valid doctor's prescription must be uploaded and verified before order checkout can be completed.
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 {/* Stock info */}
                 <div className="mt-3 text-xs flex items-center gap-2">
@@ -168,6 +189,9 @@ export function ProductDetailsModal({
                   <span className={`font-bold ${isLowStock ? 'text-rose-600' : 'text-emerald-700'}`}>
                     {product.stock} units
                   </span>
+                  {product.dosageForm && (
+                    <span className="text-slate-400">• Dosage Form: <strong className="text-slate-700">{product.dosageForm}</strong></span>
+                  )}
                 </div>
 
                 {/* Brief description */}
@@ -218,7 +242,7 @@ export function ProductDetailsModal({
                       onClose();
                     }}
                     disabled={isOutOfStock}
-                    className="py-2.5 rounded-xl border border-slate-300 text-slate-800 text-xs font-semibold hover:bg-slate-50 flex items-center justify-center gap-1.5 disabled:opacity-40"
+                    className="py-2.5 rounded-xl border border-slate-300 text-slate-800 text-xs font-semibold hover:bg-slate-50 flex items-center justify-center gap-1.5 disabled:opacity-40 cursor-pointer"
                   >
                     <ShoppingBag className="w-4 h-4 text-teal-600" />
                     <span>Add to Cart</span>
@@ -231,10 +255,14 @@ export function ProductDetailsModal({
                       onClose();
                     }}
                     disabled={isOutOfStock}
-                    className="py-2.5 rounded-xl bg-teal-600 text-white text-xs font-semibold hover:bg-teal-700 flex items-center justify-center gap-1.5 shadow-md shadow-teal-600/20 disabled:opacity-40"
+                    className={`py-2.5 rounded-xl text-white text-xs font-semibold flex items-center justify-center gap-1.5 shadow-md disabled:opacity-40 cursor-pointer ${
+                      product.requiresPrescription
+                        ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-600/20'
+                        : 'bg-teal-600 hover:bg-teal-700 shadow-teal-600/20'
+                    }`}
                   >
-                    <Zap className="w-4 h-4" />
-                    <span>Buy Now</span>
+                    {product.requiresPrescription ? <FileText className="w-4 h-4" /> : <Zap className="w-4 h-4" />}
+                    <span>{product.requiresPrescription ? 'Proceed to Rx Checkout' : 'Buy Now'}</span>
                   </button>
                 </div>
               </div>
